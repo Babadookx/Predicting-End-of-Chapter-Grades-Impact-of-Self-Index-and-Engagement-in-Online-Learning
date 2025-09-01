@@ -33,10 +33,10 @@ The repository contains:
 ---
 
 ## 📂 Repository Structure
-Waiver_EOC/
-├─ aaFinalCode.Rmd # Main R analysis script
-├─ aaFinalCode.html # Rendered HTML report
-├─ checkpoints_eoc.csv # EOC assessment data
-├─ checkpoints_pulse.csv # Self-report motivation survey
-├─ page_views.csv # Clickstream engagement data (>100MB, omitted online)
-├─ final_poster_Nightingale.pdf # Poster summary (primary deliverable)
+Waiver_EOC
+aaFinalCode.Rmd: Main R analysis script
+aaFinalCode.html: Rendered HTML report
+checkpoints_eoc.csv: EOC assessment data
+checkpoints_pulse.csv: Self-report motivation survey
+page_views.csv: Clickstream engagement data (>100MB, omitted online)
+final_poster_Nightingale.pdf: Poster summary (primary deliverable)
