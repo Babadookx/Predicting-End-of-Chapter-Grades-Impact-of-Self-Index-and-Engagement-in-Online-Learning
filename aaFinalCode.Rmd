@@ -1,0 +1,409 @@
+---
+title: "Table O"
+author: "Jinyi Xue.546"
+date: "2024-08-22"
+output: html_document
+---
+```{r setup, include=FALSE}
+library(tidyverse)
+library(patchwork)
+library(broom)
+library(modelr)
+library(lme4)
+library(dplyr)
+library(tableone)
+library(lmerTest)
+library(car)
+library(effects)
+```
+
+```{r}
+eoc <- read_csv("checkpoints_eoc.csv")
+pulse <- read_csv("checkpoints_pulse.csv")
+views <- read_csv("page_views.csv")
+
+eoc <- subset(eoc, eoc$book == "College / Statistics and Data Science (ABC)")
+
+views <- subset(views, views$book == "College / Statistics and Data Science (ABC)")
+
+pulse <- subset(pulse, pulse$book == "College / Statistics and Data Science (ABC)")
+
+view_chaptertime <- aggregate(engaged ~ student_id + chapter_number + class_id, data = views, FUN = sum)
+
+idle <- aggregate(idle_brief ~ student_id + chapter_number + class_id, data = views, FUN = sum)
+
+off_page <- aggregate(off_page_brief ~ student_id + chapter_number + class_id, data = views, FUN = sum)
+
+eoc_view_chaptertime <- inner_join(view_chaptertime, eoc, by = c("class_id", "student_id", "chapter_number"))
+
+eoc_view_chaptertime <- inner_join(eoc_view_chaptertime, idle, by = c("class_id", "student_id", "chapter_number"))
+
+eoc_view_chaptertime <- inner_join(eoc_view_chaptertime, off_page, by = c("class_id", "student_id", "chapter_number"))
+
+eoc_view_chaptertime <- eoc_view_chaptertime %>% select (class_id,student_id, chapter_number,engaged,idle_brief, off_page_brief, EOC )
+
+eoc_view_chaptertime$engaged <- eoc_view_chaptertime$engaged/60000
+eoc_view_chaptertime$idle_brief <- eoc_view_chaptertime$idle_brief/60000
+eoc_view_chaptertime$off_page_brief <- eoc_view_chaptertime$off_page_brief/60000
+
+template <- eoc_view_chaptertime %>%
+  group_by(class_id, student_id) %>%
+  summarize(chapter_number = list(1:13)) %>%
+  unnest(chapter_number)
+
+complete_data <- template %>%
+  left_join(eoc_view_chaptertime, by = c("class_id", "student_id", "chapter_number"))
+
+complete_data <- complete_data %>%
+  arrange(class_id, student_id, chapter_number)
+
+```
+
+###Construct 
+
+```{r}
+cost <- pulse %>% 
+  filter(construct == "Cost") %>% 
+  select(class_id,student_id,chapter_number,construct,response) %>%
+  rename(cost = construct, Cost_Level = response)
+cost$chapter_number <- cost$chapter_number
+cost <- cost %>%
+  mutate(Cost_Level = case_when(
+    Cost_Level == 1 ~ 6,
+    Cost_Level == 2 ~ 5,
+    Cost_Level == 3 ~ 4,
+    Cost_Level == 4 ~ 3,
+    Cost_Level == 5 ~ 2,
+    Cost_Level == 6 ~ 1
+  ))
+
+dput(names(cost))
+
+util <- pulse %>% 
+  filter(construct == "Utility Value") %>% 
+   select(class_id,student_id,chapter_number,construct,response) %>%
+  rename(utility = construct, Util_Level = response)
+util$chapter_number <- util$chapter_number - 1
+
+expt <- pulse %>% 
+  filter(construct == "Expectancy") %>% 
+   select(class_id,student_id,chapter_number,construct,response) %>%
+  rename(expectancy = construct, Exp_Level = response)
+expt$chapter_number <- expt$chapter_number - 1
+
+int <- pulse %>% 
+  filter(construct == "Intrinsic Value") %>% 
+   select(class_id,student_id,chapter_number,construct,response) %>%
+  rename(int_value = construct, Int_Level = response)
+```
+
+```{r}
+full_data <- complete_data %>%
+  left_join(cost %>% select(class_id, student_id, chapter_number, Cost_Level), 
+            by = c("class_id", "student_id", "chapter_number")) %>%
+  left_join(util %>% select(class_id, student_id, chapter_number, Util_Level), 
+            by = c("class_id", "student_id", "chapter_number")) %>%
+  left_join(expt %>% select(class_id, student_id, chapter_number, Exp_Level), 
+            by = c("class_id", "student_id", "chapter_number")) %>%
+  left_join(int %>% select(class_id, student_id, chapter_number, Int_Level), 
+            by = c("class_id", "student_id", "chapter_number"))
+
+full_data <- full_data %>%
+  mutate(chapter_group = case_when(
+    chapter_number >= 1 & chapter_number <= 4 ~ "1 to 4",
+    chapter_number >= 5 & chapter_number <= 8 ~ "5 to 8",
+    chapter_number >= 9 & chapter_number <= 13 ~ "9 to 13"
+  ))
+
+dput(names(full_data))
+
+```
+
+```{r}
+var_num <- c("chapter_number", "engaged", "idle_brief", 
+"off_page_brief", "EOC", "Cost_Level", "Util_Level", "Exp_Level", 
+"Int_Level")
+
+table1 <- CreateTableOne(vars = var_num, factorVars = "chapter_group", data = full_data)
+
+summary(table1)
+
+print(table1, nonnormal = "engaged", formatOptions = list(big.mark = ","))
+```
+```{r}
+tab2 <- CreateTableOne(vars = var_num, strata = "chapter_group" , data = full_data)
+summary(tab2)
+print(tab2, nonnormal = c("engaged", "idle_brief", "off_page_brief"), formatOptions = list(big.mark = ","))
+```
+
+```{r}
+full_data$Total_Level <- rowSums(full_data[, c("Cost_Level", "Util_Level", "Exp_Level", "Int_Level")], na.rm = TRUE)
+
+hist(full_data$Total_Level)
+summary(full_data$Total_Level)
+```
+#Model selection 
+
+```{r}
+model22 <- lmer(EOC ~  engaged + idle_brief + off_page_brief + chapter_number +
+               (1 | student_id) + (1 | chapter_number), data = na.omit(full_data), REML = FALSE)
+summary(model22)
+
+step(model22)
+
+
+model222 <- lmer(EOC ~  engaged + idle_brief + off_page_brief + chapter_group +
+               (1 | student_id) + (1 | chapter_number), data = na.omit(full_data), REML = FALSE)
+summary(model222)
+
+Anova(model222, type = "III")
+
+```
+
+###Graph to illustrate
+```{r}
+fullData <- na.omit(full_data)
+quantile(fullData$idle_brief)
+
+fullData <- fullData %>% 
+  mutate(idle_time = factor(case_when(
+    idle_brief <= 17 ~ "0-17",
+    idle_brief > 17 & idle_brief <= 43 ~ "17-43",
+    idle_brief > 43 & idle_brief <= 89 ~ "43-89",
+    idle_brief > 89 ~ ">89"),
+    levels = c("0-17","17-43","43-89",">89")))
+
+#each chapter
+ggplot(fullData, aes(x = factor(chapter_number), y = EOC, fill = idle_time)) + geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.8)) +
+  labs(title = "Distribution of EOC Scores by Idle Time and Chapter Group",
+       x = "Chapter Group",
+       y = "EOC Scores",
+       fill = "Idle Time") +
+  theme_minimal()
+
+#group_chapter
+ggplot(fullData, aes(x = chapter_group, y = EOC, fill = idle_time)) + geom_boxplot(alpha = 0.8, position = position_dodge(width = 0.8)) +
+  labs(title = "Distribution of EOC Scores by Idle Time and Chapter Group",
+       x = "Chapter Group",
+       y = "EOC Scores",
+       fill = "Idle Time")  + 
+  theme_minimal()
+```
+
+```{r}
+
+fit_model <- lmer(EOC ~ Total_Level +  idle_brief + chapter_group
+            + (1 | student_id) + (1 | chapter_number), data = na.omit(full_data), REML = FALSE)
+
+summary(fit_model)
+
+fitmodel <- lmer(EOC ~ Total_Level +  idle_brief
+            + (1 | student_id) + (1 | chapter_number), data = na.omit(full_data), REML = FALSE)
+summary(fitmodel)
+
+
+fitmodel2 <- lmer(EOC ~ engaged + chapter_group
+            + (1 | student_id), data = na.omit(full_data), REML = FALSE)
+summary(fitmodel2)
+```
+
+```{r}
+avg_eoc_all <- aggregate(EOC ~ chapter_number , data = fullData, FUN = mean)
+avg_key_all <- aggregate(Total_Level ~ chapter_number , data = fullData, FUN = mean)
+avg_idle_all <- aggregate(idle_brief ~ chapter_number , data = fullData, FUN = mean)
+
+merged_data <- merge(avg_eoc_all, avg_key_all, by = "chapter_number")
+avg_all <- merge(merged_data, avg_idle_all, by = "chapter_number")
+quantile(avg_all$idle_brief)
+
+avg_all <- avg_all %>% 
+  mutate(idle_cat = factor(case_when(
+    idle_brief <= 51 ~ "0-51min",
+    idle_brief > 51 & idle_brief <= 65 ~ "50-65min",
+    idle_brief > 65 & idle_brief <= 82 ~ "65-82min",
+    idle_brief > 82 ~ ">82min"),
+    levels = c("0-51min","50-65min","65-82min",">82min")))
+
+ggplot(avg_all, aes(x = Total_Level, y = EOC, color = idle_cat, group = idle_cat)) +
+  geom_line(size = 1.2) +
+  labs(title = "Relationship between Average Key and EOC Scores by Idle Time Category",
+       x = "Average Key (Total_Level)",
+       y = "Average EOC",
+       color = "Idle Time Category") +
+  theme_minimal() +
+  scale_color_manual(values = c("0-51min" = "blue", 
+                                "50-65min" = "green", 
+                                "65-82min" = "orange", 
+                                ">82min" = "red"))
+```
+
+```{r}
+unfinish_std <- full_data %>%
+  group_by(student_id) %>%
+  filter(all(NA %in% EOC)) %>%
+  distinct(student_id)
+
+finished_std <- full_data %>%
+  group_by(student_id) %>%
+  filter(all(!NA %in% EOC)) %>%
+  distinct(student_id)
+
+unfinish_data <- full_data %>%
+  filter(student_id %in% unfinish_std$student_id)
+
+finished_data <- full_data %>%
+  filter(student_id %in% finished_std$student_id)
+```
+
+```{r}
+finished_EOC <- aggregate(EOC ~ chapter_number , data = finished_data, FUN = mean)
+finished_EOC$Group <- "Finished"
+unfin_EOC <- aggregate(EOC ~  chapter_number , data = unfinish_data, FUN = mean)
+unfin_EOC$Group <- "Unfinished"
+
+avg_chapt_EOC <- rbind(finished_EOC, unfin_EOC)
+
+ggplot(avg_chapt_EOC, aes(x = chapter_number, y = EOC, color = Group)) +
+  geom_line(size = 1) +            # Line plot
+  geom_point(size = 3) +           # Add points
+  labs(title = "Average EOC per Chapter",
+       x = "Chapter Number",
+       y = "Average EOC",
+       color = "Group") +
+  scale_x_continuous(breaks = 1:13) + 
+  scale_color_manual(values = c("Finished" = "#8ECFC9", 
+                                "Unfinished" = "#FA7F6F")) +  # Custom colors
+  theme_minimal()
+ 
+```
+
+
+```{r}
+unf_eoc <- unfin_EOC %>%
+  filter(!is.na(EOC)) %>%
+  pull(EOC)
+
+fin_eoc <- finished_EOC %>%
+  filter(!is.na(EOC)) %>%
+  pull(EOC)
+
+t.test(unf_eoc, fin_eoc, var.equal = TRUE)
+
+diff <- fin_eoc - unf_eoc
+
+plot(diff)
+```
+#Concern on insufficient data
+
+```{r}
+finished_key <- aggregate(Total_Level ~ chapter_number , data = na.omit(finished_data), FUN = mean)
+finished_key$Group <- "Finished"
+unfin_key <- aggregate(Total_Level ~  chapter_number , data = na.omit(unfinish_data), FUN = mean)
+unfin_key$Group <- "Unfinished"
+
+avg_chapt_key <- rbind(finished_key, unfin_key)
+
+avg_chapt_key <- avg_chapt_key[!(avg_chapt_key$chapter_number == 1 | avg_chapt_key$chapter_number == 13), ]
+
+ggplot(avg_chapt_key, aes(x = chapter_number, y = Total_Level, color = Group)) +
+  geom_line(size = 1) +            # Line plot
+  geom_point(size = 3) +           # Add points
+  labs(title = "Average Self-Index per Chapter",
+       x = "Chapter Number",
+       y = "Average Self-Index",
+       color = "Group") + 
+  scale_x_continuous(breaks = 2:12) + 
+  theme_minimal()
+
+unf_key <- unfin_key %>%
+  filter(!is.na(Total_Level)) %>%
+  pull(Total_Level)
+
+fin_key <- finished_key %>%
+  filter(!is.na(Total_Level)) %>%
+  pull(Total_Level)
+
+t.test(unf_key, fin_key, var.equal = TRUE)
+
+```
+
+```{r}
+
+# Extract random effects
+random_effects <- ranef(model222)
+
+# Convert the random effects for 'student_id' and 'chapter_number' to data frames
+student_re <- random_effects$student_id
+student_re$student_id <- rownames(student_re)
+
+chapter_re <- random_effects$chapter_number
+chapter_re$chapter_number <- rownames(chapter_re)
+
+# Caterpillar plot for student_id random effects
+ggplot(student_re, aes(x = reorder(student_id, `(Intercept)`), y = `(Intercept)`)) +
+  geom_point(color = "blue") +
+  coord_flip() +
+  labs(title = "Caterpillar Plot of Random Intercepts for student_id",
+       x = "Student ID",
+       y = "Random Intercept") +
+  theme_minimal()
+
+# Caterpillar plot for chapter_number random effects
+ggplot(chapter_re, aes(x = reorder(chapter_number, `(Intercept)`), y = `(Intercept)`)) +
+  geom_point(color = "red") +
+  coord_flip() +
+  labs(title = "Caterpillar Plot of Random Intercepts for chapter_number",
+       x = "Chapter Number",
+       y = "Random Intercept") +
+  theme_minimal()
+```
+
+```{r}
+quantile(na.omit(full_data$Total_Level))
+
+full_data <- full_data %>%
+  mutate(Total_Level_Group = cut(Total_Level,
+                                 breaks = c(0, 10, 17, 24),
+                                 include.lowest = TRUE,
+                                 labels = c("0-10", "11-17", "18-24")))
+
+# Replot the box plot with the new Total_Level groups
+ggplot(full_data, aes(x = Total_Level_Group, y = EOC)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "Box Plot of EOC by Total_Level Group",
+       x = "Total Level Group",
+       y = "EOC") +
+  theme_minimal()
+
+full_data <- full_data %>%
+  mutate(idle_cat = factor(case_when(
+    idle_brief <= 17 ~ "0-17",
+    idle_brief > 17 & idle_brief <= 43 ~ "17-43",
+    idle_brief > 43 & idle_brief <= 89 ~ "43-89",
+    idle_brief > 89 ~ ">89"),
+    levels = c("0-17","17-43","43-89",">89")))
+
+
+ggplot(full_data, aes(x = Total_Level_Group, y = EOC, fill = idle_cat)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of EOC by Total_Level Group and Idle Time Category",
+       x = "Total Level Group",
+       y = "EOC",
+       fill = "Idle Time") +
+  theme_minimal()
+```
+
+```{r}
+
+ggplot(full_data, aes(x = Total_Level_Group, y = EOC, fill = chapter_group)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of EOC by Self Index and Idle Time Category",
+       x = "Self-Index",
+       y = "EOC",
+       fill = "Chapter Group") +
+  scale_fill_manual(values = c("1 to 4" = "#FFBE7A", 
+                               "5 to 8" = "#8ECFC9", 
+                               "9 to 13" = "#FA7F6F")) +
+  theme_minimal()
+
+```
