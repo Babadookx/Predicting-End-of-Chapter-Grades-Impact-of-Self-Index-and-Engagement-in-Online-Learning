@@ -33,10 +33,36 @@ The repository contains:
 ---
 
 ## 📂 Repository Structure
-Waiver_EOC
-aaFinalCode.Rmd: Main R analysis script
-aaFinalCode.html: Rendered HTML report
-checkpoints_eoc.csv: EOC assessment data
-checkpoints_pulse.csv: Self-report motivation survey
-page_views.csv: Clickstream engagement data (>100MB, omitted online)
-final_poster_Nightingale.pdf: Poster summary (primary deliverable)
+## 📂 Repository Files
+
+Waiver_EOC  
+`aaFinalCode.Rmd`: Main R analysis script  
+`aaFinalCode.html`: Rendered HTML report  
+`checkpoints_eoc.csv`: EOC assessment data  
+`checkpoints_pulse.csv`: Self-report motivation survey  
+`page_views.csv`: Clickstream engagement data (>100MB, omitted online)  
+`final_poster_Nightingale.pdf`: Poster summary (primary deliverable)  
+
+---
+
+## 🧪 Methods
+- **Descriptive statistics**: ANOVA (normal var
+- iables) and Kruskal–Wallis (skewed variables) for chapter group comparisons.
+- **Modeling**:  
+  Linear Mixed Model (LMM):  
+  \[
+  EOC ~ \text{Total_Level} + \text{idle\_brief} + \text{chapter\_group} + (1|\text{student\_id}) + (1|\text{chapter\_number})
+  \]
+  with random intercepts for students and chapters.
+- **Exploration**: Additional plots (caterpillar plots, alternate binning, etc.) were generated to guide modeling but are not all included in the final poster.
+
+---
+
+## 🚀 How to Reproduce
+1. Clone this repository:
+   ```bash
+   git clone git@github.com:Babadookx/Predicting-End-of-Chapter-Grades-Impact-of-Self-Index-and-Engagement-in-Online-Learning.git
+2. Open aaFinalCode.Rmd in RStudio.
+3. Install required packages:install.packages(c("tidyverse","here","tableone","lme4","lmerTest","broom"))
+4. Render: rmarkdown::render("aaFinalCode.Rmd", output_format = "html_document")
+tip: Large files (page_views.csv) are not included; 
