@@ -63,6 +63,10 @@ Waiver_EOC
    ```bash
    git clone git@github.com:Babadookx/Predicting-End-of-Chapter-Grades-Impact-of-Self-Index-and-Engagement-in-Online-Learning.git
 2. Open aaFinalCode.Rmd in RStudio.
-3. Install required packages:install.packages(c("tidyverse","here","tableone","lme4","lmerTest","broom"))
-4. Render: rmarkdown::render("aaFinalCode.Rmd", output_format = "html_document")
+3. Install required
+```Terminal
+packages:install.packages(c("tidyverse","here","tableone","lme4","lmerTest","broom"))
+4. Render:
+```Terminal
+rmarkdown::render("aaFinalCode.Rmd", output_format = "html_document")
 tip: Large files (page_views.csv) are not included; 
